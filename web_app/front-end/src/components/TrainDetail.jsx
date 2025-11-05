@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+} from "recharts";
 
 export default function TrainDetail({ train, goBack }) {
   const [schedule, setSchedule] = useState(null);
@@ -8,10 +19,8 @@ export default function TrainDetail({ train, goBack }) {
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
 
-  // 1️⃣ Fetch original schedule first
   useEffect(() => {
     if (!train?.train_number) return;
-
     setLoading(true);
     axios
       .get(
@@ -22,7 +31,6 @@ export default function TrainDetail({ train, goBack }) {
       .finally(() => setLoading(false));
   }, [train.train_number]);
 
-  // 2️⃣ Fetch alternate simulation when user clicks button
   const fetchSimulation = async () => {
     setAnalyzing(true);
     try {
@@ -38,7 +46,6 @@ export default function TrainDetail({ train, goBack }) {
     }
   };
 
-  // Loading state for schedule
   if (loading)
     return (
       <div className="flex flex-col items-center justify-center h-[70vh] text-center space-y-6">
@@ -51,6 +58,26 @@ export default function TrainDetail({ train, goBack }) {
         </p>
       </div>
     );
+
+  // ===== Dashboard Analytics Preparation =====
+  const chartData =
+    result?.detail_df?.map((r, idx) => ({
+      station: r.station_name,
+      delay: r.predicted_delay,
+      cumulative: r.cumulative_delay,
+      index: idx + 1,
+    })) || [];
+
+  const avgDelay =
+    result?.detail_df?.reduce((acc, r) => acc + r.predicted_delay, 0) /
+      result?.detail_df?.length || 0;
+
+  const maxDelayStation =
+    result?.detail_df?.reduce(
+      (max, r) =>
+        r.predicted_delay > max.predicted_delay ? r : max,
+      result?.detail_df?.[0] || {}
+    ) || {};
 
   return (
     <motion.div
@@ -110,9 +137,7 @@ export default function TrainDetail({ train, goBack }) {
                       {s.station_name} ({s.station_code})
                     </td>
                     <td className="px-5 py-3">
-                      {s.scheduled_arrival
-                        ? new Date(s.scheduled_arrival).toLocaleString()
-                        : "—"}
+                      {new Date(s.scheduled_arrival).toLocaleString()}
                     </td>
                     <td className="px-5 py-3">{s.lat?.toFixed(3)}</td>
                     <td className="px-5 py-3">{s.lon?.toFixed(3)}</td>
@@ -124,7 +149,6 @@ export default function TrainDetail({ train, goBack }) {
             </table>
           </div>
 
-          {/* ===== Trigger Analysis Button ===== */}
           {!result && (
             <div className="text-center">
               <button
@@ -231,56 +255,72 @@ export default function TrainDetail({ train, goBack }) {
               </div>
             </div>
 
-            {/* Detailed Simulation */}
-            <div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">
-                Detailed Station-wise Simulation (Best Variant)
+            {/* ===== Dashboard Analytics Section ===== */}
+            <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-6">
+              <h3 className="text-xl font-semibold text-gray-800 mb-4">
+                📊 Analytics Dashboard
               </h3>
-              <div className="overflow-x-auto bg-white rounded-2xl shadow-md border border-gray-200">
-                <table className="min-w-full text-sm text-gray-700">
-                  <thead className="bg-gradient-to-r from-gray-700 to-gray-900 text-white">
-                    <tr>
-                      <th className="px-5 py-3 text-left">Station</th>
-                      <th className="px-5 py-3 text-center">Original Arrival</th>
-                      <th className="px-5 py-3 text-center">Shifted Arrival</th>
-                      <th className="px-5 py-3 text-center">Predicted Delay (min)</th>
-                      <th className="px-5 py-3 text-center">Cumulative Delay</th>
-                      <th className="px-5 py-3 text-center">ETA</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.detail_df.map((row, idx) => (
-                      <motion.tr
-                        key={idx}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: idx * 0.03 }}
-                        className={`text-center ${
-                          idx % 2 === 0 ? "bg-gray-50" : "bg-white"
-                        } hover:bg-blue-50 transition`}
-                      >
-                        <td className="px-5 py-3 text-left font-medium">
-                          {row.station_name} ({row.station_code})
-                        </td>
-                        <td className="px-5 py-3">
-                          {new Date(row.original_scheduled_arrival).toLocaleString()}
-                        </td>
-                        <td className="px-5 py-3">
-                          {new Date(row.scheduled_arrival_shifted).toLocaleString()}
-                        </td>
-                        <td className="px-5 py-3 text-blue-700 font-semibold">
-                          {row.predicted_delay.toFixed(2)}
-                        </td>
-                        <td className="px-5 py-3 text-indigo-700 font-semibold">
-                          {row.cumulative_delay.toFixed(2)}
-                        </td>
-                        <td className="px-5 py-3 text-green-700 font-semibold">
-                          {new Date(row.actual_arrival_predicted).toLocaleString()}
-                        </td>
-                      </motion.tr>
-                    ))}
-                  </tbody>
-                </table>
+
+              {/* Cards */}
+              <div className="grid md:grid-cols-3 gap-6 mb-8">
+                <div className="p-4 bg-blue-50 rounded-xl shadow-sm border border-blue-200">
+                  <p className="text-gray-600 text-sm">Average Predicted Delay</p>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {avgDelay.toFixed(2)} min
+                  </p>
+                </div>
+                <div className="p-4 bg-red-50 rounded-xl shadow-sm border border-red-200">
+                  <p className="text-gray-600 text-sm">Max Delay Station</p>
+                  <p className="text-2xl font-bold text-red-700">
+                    {maxDelayStation?.station_name || "—"}
+                  </p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-xl shadow-sm border border-green-200">
+                  <p className="text-gray-600 text-sm">Total Stations Analyzed</p>
+                  <p className="text-2xl font-bold text-green-700">
+                    {result.detail_df.length}
+                  </p>
+                </div>
+              </div>
+
+              {/* Charts */}
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Line Chart - Cumulative Delay */}
+                <div className="h-64">
+                  <h4 className="text-gray-700 font-semibold mb-2">
+                    Cumulative Delay Over Stations
+                  </h4>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="station" hide />
+                      <YAxis />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="cumulative"
+                        stroke="#2563eb"
+                        strokeWidth={2}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Bar Chart - Delay by Station */}
+                <div className="h-64">
+                  <h4 className="text-gray-700 font-semibold mb-2">
+                    Predicted Delay per Station
+                  </h4>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="station" hide />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="delay" fill="#f97316" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
             </div>
           </motion.div>

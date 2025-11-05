@@ -10,6 +10,24 @@ export default function TrainManager() {
   const [totalPages, setTotalPages] = useState(1);
   const perPage = 10;
 
+  // Helper: convert any ISO to a datetime-local value (no timezone letter)
+  const isoToLocalInput = (isoString) => {
+    if (!isoString) return "";
+    const d = new Date(isoString);
+    if (isNaN(d)) return "";
+    // datetime-local expects local time; adjust from current TZ offset
+    const tzOffsetMs = d.getTimezoneOffset() * 60 * 1000;
+    const local = new Date(d.getTime() - tzOffsetMs);
+    return local.toISOString().slice(0, 16);
+  };
+
+  // Helper: convert a datetime-local value back to ISO (UTC Z)
+  const localInputToISO = (localValue) => {
+    // localValue like "2025-11-05T13:45"
+    const localDate = new Date(localValue);
+    return localDate.toISOString();
+  };
+
   // Fetch trains
   const fetchTrains = async () => {
     try {
@@ -25,6 +43,7 @@ export default function TrainManager() {
 
   useEffect(() => {
     fetchTrains();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
   // Delete train
@@ -46,42 +65,82 @@ export default function TrainManager() {
   const handleEdit = (train) => {
     setEditingTrain(train);
 
-    const firstStation = train.schedule?.[0];
+    const firstStation = train.schedule?.[0] || null;
     const startTime =
       firstStation?.scheduled_arrival ||
       firstStation?.scheduled_departure ||
       "";
 
-    setNewStartTime(
-      startTime
-        ? new Date(startTime).toISOString().slice(0, 16)
-        : ""
-    );
+    setNewStartTime(startTime ? isoToLocalInput(startTime) : "");
     setShowForm(true);
   };
 
-  // Save new start time
+  // Save new start time (shift all later scheduled_arrival by same delta)
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     if (!editingTrain) return;
 
-    const updated = { ...editingTrain };
+    // 1) New start time from input (local) -> ISO
+    const newStartISO = localInputToISO(newStartTime);
 
-    // Ensure at least one schedule item exists
-    if (!updated.schedule || updated.schedule.length === 0) {
-      updated.schedule = [
-        {
-          station_name: "Origin Station",
-          station_code: "ORG",
-          scheduled_arrival: newStartTime,
-        },
-      ];
+    // 2) Compute delta from the original first-station start
+    const origFirst =
+      editingTrain?.schedule?.[0]?.scheduled_arrival ||
+      editingTrain?.schedule?.[0]?.scheduled_departure;
+
+    const origFirstISO = origFirst ? new Date(origFirst).toISOString() : null;
+    const deltaMs = origFirstISO
+      ? new Date(newStartISO).getTime() - new Date(origFirstISO).getTime()
+      : 0;
+
+    // 3) Build updated payload with shifted arrivals
+    const updated = { ...editingTrain };
+    const schedule = Array.isArray(updated.schedule)
+      ? updated.schedule.map((s) => ({ ...s }))
+      : [];
+
+    if (schedule.length === 0) {
+      // Ensure at least one schedule entry exists
+      schedule.push({
+        station_name: "Origin Station",
+        station_code: "ORG",
+        scheduled_arrival: newStartISO,
+        scheduled_departure: newStartISO,
+      });
     } else {
-      // Update only first station time
-      updated.schedule[0].scheduled_arrival = newStartTime;
-      updated.schedule[0].scheduled_departure = newStartTime;
+      // Update first station (keep departure in sync)
+      schedule[0] = {
+        ...schedule[0],
+        scheduled_arrival: newStartISO,
+        scheduled_departure: newStartISO,
+      };
+
+      // Shift ONLY scheduled_arrival for all subsequent stations by delta
+      if (deltaMs !== 0) {
+        for (let i = 1; i < schedule.length; i++) {
+          const s = schedule[i];
+
+          if (s?.scheduled_arrival) {
+            const origArrMs = new Date(s.scheduled_arrival).getTime();
+            if (!isNaN(origArrMs)) {
+              const shiftedArrISO = new Date(origArrMs + deltaMs).toISOString();
+              schedule[i] = { ...s, scheduled_arrival: shiftedArrISO };
+            }
+          }
+
+
+          if (s?.scheduled_departure) {
+            const origDepMs = new Date(s.scheduled_departure).getTime();
+            if (!isNaN(origDepMs)) {
+              const shiftedDepISO = new Date(origDepMs + deltaMs).toISOString();
+              schedule[i] = { ...schedule[i], scheduled_departure: shiftedDepISO };
+            }
+          }
+        }
+      }
     }
+
+    updated.schedule = schedule;
 
     try {
       await axios.put(
@@ -100,7 +159,9 @@ export default function TrainManager() {
   return (
     <div className="max-w-6xl mx-auto p-6">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Train Start Time Management</h2>
+        <h2 className="text-2xl font-bold text-gray-800">
+          Train Start Time Management
+        </h2>
       </div>
 
       {/* Table */}
@@ -123,7 +184,7 @@ export default function TrainManager() {
 
               return (
                 <tr
-                  key={t._id}
+                  key={t._id || `${t.train_number}-${t.origin_code || "X"}`}
                   className="border-t hover:bg-gray-50 transition text-center"
                 >
                   <td className="px-4 py-3 text-left font-medium">
