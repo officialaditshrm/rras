@@ -27,35 +27,52 @@ export default function TrainList({ onSelectTrain }) {
     fetchTrains();
   }, [page]);
 
-  // Reset page if search or date changes
   useEffect(() => {
     setPage(1);
   }, [searchTerm, dateFilter]);
 
-  const filteredTrains = trains.filter((train) => {
-    const term = searchTerm.toLowerCase();
+  // Helper: check if train starts at least 15 mins from now
+  const isUpcomingTrain = (train) => {
+    if (!train.schedule || train.schedule.length === 0) return false;
 
-    const matchesText =
-      train.train_name.toLowerCase().includes(term) ||
-      train.train_number.toString().includes(term) ||
-      train.schedule?.some(
-        (s) =>
-          s.station_name.toLowerCase().includes(term) ||
-          s.station_code.toLowerCase().includes(term)
-      );
+    const origin = train.schedule[0]; // first station in schedule
+    const startTime = origin.scheduled_arrival || origin.scheduled_dept_time;
+    if (!startTime) return false;
 
-    const matchesDate = dateFilter
-      ? train.schedule?.some((s) => {
-          if (!s.scheduled_arrival) return false;
-          const arrivalDate = new Date(s.scheduled_arrival)
-            .toISOString()
-            .split("T")[0];
-          return arrivalDate === dateFilter;
-        })
-      : true;
+    const now = new Date();
+    const start = new Date(startTime);
+    const diffMinutes = (start - now) / (1000 * 60);
 
-    return matchesText && matchesDate;
-  });
+    return diffMinutes >= 15; // must start 15+ minutes from now
+  };
+
+  // Filter trains by search & date
+  const filteredTrains = trains
+    .filter(isUpcomingTrain)
+    .filter((train) => {
+      const term = searchTerm.toLowerCase();
+
+      const matchesText =
+        train.train_name.toLowerCase().includes(term) ||
+        train.train_number.toString().includes(term) ||
+        train.schedule?.some(
+          (s) =>
+            s.station_name.toLowerCase().includes(term) ||
+            s.station_code.toLowerCase().includes(term)
+        );
+
+      const matchesDate = dateFilter
+        ? train.schedule?.some((s) => {
+            if (!s.scheduled_arrival) return false;
+            const arrivalDate = new Date(s.scheduled_arrival)
+              .toISOString()
+              .split("T")[0];
+            return arrivalDate === dateFilter;
+          })
+        : true;
+
+      return matchesText && matchesDate;
+    });
 
   return (
     <div className="max-w-6xl mx-auto p-4">
@@ -78,12 +95,17 @@ export default function TrainList({ onSelectTrain }) {
                 {train.train_name} ({train.train_number})
               </p>
               <p className="text-sm text-gray-600">
-                <span className="font-medium">From:</span> {train.origin_name || "-"}
-                <span className="ml-2 font-medium">To:</span> {train.dest_name || "-"}
+                <span className="font-medium">From:</span>{" "}
+                {train.origin_name || "-"}
+                <span className="ml-2 font-medium">To:</span>{" "}
+                {train.dest_name || "-"}
               </p>
-              {train.date_of_journey && (
+              {train.schedule?.[0]?.scheduled_arrival && (
                 <p className="text-sm text-gray-500">
-                  <span className="font-medium">Journey Date:</span> {train.date_of_journey}
+                  <span className="font-medium">Departure:</span>{" "}
+                  {new Date(
+                    train.schedule[0].scheduled_arrival
+                  ).toLocaleString()}
                 </p>
               )}
             </div>
@@ -91,7 +113,7 @@ export default function TrainList({ onSelectTrain }) {
         ))}
       </ul>
 
-      {/* Server-side Pagination */}
+      {/* Pagination */}
       <div className="flex justify-center items-center flex-wrap gap-2 mt-6">
         <button
           className="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
@@ -129,7 +151,7 @@ export default function TrainList({ onSelectTrain }) {
 
       {filteredTrains.length === 0 && (
         <p className="text-center text-gray-500 mt-6 text-lg">
-          No trains found.
+          No upcoming trains found (all have started or start in &lt;15 min).
         </p>
       )}
     </div>
