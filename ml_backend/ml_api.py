@@ -23,6 +23,7 @@ CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
 
 
 @app.route("/api/ml/simulate", methods=["POST"])
+@app.route("/api/ml/simulate", methods=["POST"])
 def simulate():
     data = request.get_json(silent=True) or {}
     train_number = data.get("train_number")
@@ -30,28 +31,26 @@ def simulate():
         return jsonify({"error": "train_number is required"}), 400
 
     try:
-        result = simulate_original_variant(int(train_number), FINAL_MODEL, LE_DICT)
+        result = simulate_all_variants(int(train_number), FINAL_MODEL, LE_DICT)
 
-        df = result["detail_df"].copy()
-        # serialize datetimes to ISO
-        for col in [
-            "original_scheduled_arrival",
-            "scheduled_arrival_shifted",
-            "forecast_time",
-            "actual_arrival_predicted",
-            "start_time_variant",
-        ]:
+        # serialize best variant detail_df
+        df = result["best_detail"].copy() if result["best_detail"] is not None else pd.DataFrame()
+        for col in ["original_scheduled_arrival","scheduled_arrival_shifted",
+                    "forecast_time","actual_arrival_predicted","start_time_variant"]:
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
 
         payload = {
-            "train_number": int(train_number),
-            "total_delay": result["total_delay"],
-            "detail_df": df.to_dict(orient="records"),
+            "train_number": result["train_number"],
+            "best_variant": result["best_variant"],
+            "all_variants": result["all_variants"],
+            "detail_df": df.to_dict(orient="records")
         }
         return jsonify(payload)
     except Exception as e:
+        import traceback; traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     # Run this service alongside your Node API

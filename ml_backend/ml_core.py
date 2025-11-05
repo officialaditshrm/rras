@@ -193,7 +193,42 @@ def simulate_schedule_variant(shifted_schedule: pd.DataFrame,
         "detail_df": sim_df
     }
 
-def simulate_original_variant(train_number: int, final_model, le_dict) -> dict:
-    """Fetch schedule and simulate only the original (unshifted) schedule."""
-    sched = fetch_train_schedule(train_number)
-    return simulate_schedule_variant(sched, sched, final_model, le_dict)
+def simulate_all_variants(train_number: int, final_model, le_dict,
+                          interval_minutes: int = 15,
+                          total_hours: int = 4) -> dict:
+    """
+    Simulate all 15-min schedule variants over a 4-hour window and 
+    return the one with the least cumulative delay, plus summary of all.
+    """
+    train_schedule = fetch_train_schedule(train_number)
+    base_start_time = pd.to_datetime(train_schedule["scheduled_arrival"].dropna().iloc[0])
+
+    interval = timedelta(minutes=interval_minutes)
+    total_shift_duration = timedelta(hours=total_hours)
+    num_intervals = int(total_shift_duration.total_seconds() // interval.total_seconds())
+    shift_times = [base_start_time + i * interval for i in range(num_intervals + 1)]
+
+    results = []
+    for start_time in shift_times:
+        shift_minutes = (start_time - base_start_time).total_seconds() / 60
+        shifted_schedule = train_schedule.copy()
+        shifted_schedule["scheduled_arrival"] = shifted_schedule["scheduled_arrival"] + timedelta(minutes=shift_minutes)
+
+        result = simulate_schedule_variant(shifted_schedule, train_schedule, final_model, le_dict)
+        results.append(result)
+
+    # sort variants by total delay
+    summary_df = pd.DataFrame([
+        {"start_time_variant": r["start_time_variant"], "total_delay": r["total_delay"]}
+        for r in results if r["total_delay"] is not None
+    ]).sort_values("total_delay")
+
+    best = summary_df.iloc[0].to_dict() if not summary_df.empty else None
+
+    return {
+        "train_number": train_number,
+        "best_variant": best,
+        "all_variants": summary_df.to_dict(orient="records"),
+        "best_detail": next((r["detail_df"] for r in results
+                             if not summary_df.empty and r["start_time_variant"] == best["start_time_variant"]), None)
+    }
