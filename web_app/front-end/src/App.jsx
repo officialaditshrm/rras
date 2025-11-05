@@ -1,20 +1,54 @@
 import React, { useState } from "react";
+import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import TrainList from "./components/TrainList";
 import TrainDetail from "./components/TrainDetail";
+import TrainManager from "./components/TrainManager";
 
-function App() {
+export default function App() {
   const [selectedTrain, setSelectedTrain] = useState(null);
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <h1 className="text-3xl font-bold mb-4 text-center">Railway Schedule ML Viewer</h1>
-      {!selectedTrain ? (
-        <TrainList onSelectTrain={setSelectedTrain} />
-      ) : (
-        <TrainDetail train={selectedTrain} goBack={() => setSelectedTrain(null)} />
-      )}
-    </div>
+    <Router>
+      {/* ======= NAVBAR ======= */}
+      <nav className="bg-gray-900 text-white px-6 py-3 flex justify-between items-center shadow-md">
+        <h1 className="text-xl font-bold">Railway Rescheduler</h1>
+        <div className="space-x-4">
+          <Link
+            to="/"
+            className="hover:text-blue-400 transition"
+          >
+            Home
+          </Link>
+          <Link
+            to="/manage"
+            className="hover:text-blue-400 transition"
+          >
+            Manage Trains
+          </Link>
+        </div>
+      </nav>
+
+      {/* ======= ROUTES ======= */}
+      <main className="p-4">
+        <Routes>
+          <Route
+            path="/"
+            element={
+              selectedTrain ? (
+                <TrainDetail
+                  train={selectedTrain}
+                  goBack={() => setSelectedTrain(null)}
+                />
+              ) : (
+                <TrainList onSelectTrain={setSelectedTrain} />
+              )
+            }
+          />
+
+          {/* New Admin Page */}
+          <Route path="/manage" element={<TrainManager />} />
+        </Routes>
+      </main>
+    </Router>
   );
 }
-
-export default App;
