@@ -8,7 +8,7 @@ export default function TrainDetail({ train, goBack }) {
   useEffect(() => {
     setLoading(true);
     // Call your backend API that runs ML simulation for this train
-    axios.post(`https://railway-rescheduling-automation-system.onrender.com/api/ml/simulate`, {
+    axios.post(`https://rras-ml.onrender.com/api/ml/simulate`, {
       train_number: train.number
     })
     .then(res => setResult(res.data))

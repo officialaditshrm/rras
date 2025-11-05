@@ -19,7 +19,8 @@ with open(LE_DICT_PATH, "rb") as f:
 
 app = Flask(__name__)
 # If browser calls Flask directly; harmless if proxied by Node:
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, supports_credentials=True, resources={r"/*": {"origins": "*"}})
+
 
 @app.route("/api/ml/simulate", methods=["POST"])
 def simulate():
