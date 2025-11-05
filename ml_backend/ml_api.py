@@ -5,7 +5,7 @@ import pandas as pd
 import pickle
 import os
 
-from ml_core import simulate_original_variant
+from ml_core import simulate_all_variants
 
 # ---- config / model paths
 MODEL_PATH = os.environ.get("MODEL_PATH", "final_model.pkl")
